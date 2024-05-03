@@ -2,6 +2,7 @@ import logging
 import sys
 import threading
 from subprocess import Popen, PIPE
+from concurrent.futures import ThreadPoolExecutor
 
 # Set up logging
 logging.basicConfig(filename='stream_log.txt', level=logging.INFO)
@@ -38,30 +39,16 @@ def start_subprocess():
 	# Start the subprocess
 	process = Popen(['/bin/cat'], stdin=PIPE, stdout=PIPE, stderr=PIPE, bufsize=0)
 
-	# Start threads for handling input and output streams
-	stdin_thread = threading.Thread(target=in_stream_handler, args=(sys.stdin, process.stdin, 'stdin'))
-	stdout_thread = threading.Thread(target=out_stream_handler, args=(process.stdout, sys.stdout, 'stdout'))
-	stderr_thread = threading.Thread(target=out_stream_handler, args=(process.stderr, sys.stderr, 'stderr'))
-
-	# Start the threads
-	stdin_thread.start()
-	stdout_thread.start()
-	stderr_thread.start()
-
-	# Wait for the threads to finish
-	stdin_thread.join()
-	stdout_thread.join()
-	stderr_thread.join()
+	with ThreadPoolExecutor(3, "io") as pool:
+		pool.submit(in_stream_handler, sys.stdin, process.stdin, 'stdin')
+		pool.submit(out_stream_handler, process.stdout, sys.stdout, 'stdout')
+		pool.submit(out_stream_handler, process.stderr, sys.stderr, 'stderr')
 
 	# Wait for the subprocess to exit and get its exit code
 	exit_code = process.wait()
 	logging.info(f'Subprocess exited with code {exit_code}')
-
-
-# Main function
-def main():
-	start_subprocess()
+	return exit_code
 
 
 if __name__ == "__main__":
-	main()
+	sys.exit(start_subprocess())
